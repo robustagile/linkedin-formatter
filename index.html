@@ -4,6 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LinkedIn Post Formatter</title>
+    <meta property="og:title" content="LinkedIn Post Formatter – Bold, Italic, Bullets & Emojis" />
+    <meta property="og:description" content="Format LinkedIn posts with bold, italic, underline, strikethrough, bullets, numbered lists, emojis, and copy-paste-safe Unicode text." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://robustagile.com/linkedin-formatter/" />
+    <meta property="og:image" content="https://robustagile.com/linkedin-formatter/img/screenshot.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="LinkedIn Post Formatter" />
+    <meta name="twitter:description" content="Free copy-paste formatter for LinkedIn posts." />
+    <meta name="twitter:image" content="https://robustagile.com/linkedin-formatter/img/screenshot.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -20,6 +29,23 @@
       }
       textarea { font-feature-settings: "ss01"; }
     </style>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "LinkedIn Post Formatter",
+        "url": "https://robustagile.com/linkedin-formatter/",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Any",
+        "description": "Free web tool to format LinkedIn posts with bold, italic, underline, strikethrough, monospace, bullets, numbered lists, and emojis using Unicode text.",
+        "isAccessibleForFree": true,
+        "creator": {
+          "@type": "Organization",
+          "name": "Robust Agile"
+        },
+        "codeRepository": "https://github.com/robustagile/linkedin-formatter"
+      }
+    </script>
   </head>
   <body class="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 min-h-screen text-zinc-900 antialiased">
     <div id="root"></div>
