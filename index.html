@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LinkedIn Post Formatter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/htm@3/dist/htm.umd.js"></script>
+    <script crossorigin src="https://cdn.jsdelivr.net/npm/emoji-mart@5/dist/browser.js"></script>
+    <style>
+      /* emoji-mart picker chrome */
+      em-emoji-picker {
+        --rgb-background: 255, 255, 255;
+        --border-radius: 8px;
+        --shadow: 0 10px 25px -5px rgb(0 0 0 / 0.1), 0 4px 10px -3px rgb(0 0 0 / 0.05);
+        height: 360px;
+        max-height: 360px;
+      }
+      textarea { font-feature-settings: "ss01"; }
+    </style>
+  </head>
+  <body class="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 min-h-screen text-zinc-900 antialiased">
+    <div id="root"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
