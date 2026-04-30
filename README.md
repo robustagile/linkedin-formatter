@@ -2,6 +2,8 @@
 
 A small static web tool that formats text using Unicode characters so the styling survives a copy-paste into platforms that strip HTML — LinkedIn, X/Twitter, Slack, plain-text editors, etc. The page is two files. No build step. No backend.
 
+**Try it: [robustagile.com/linkedin-formatter](https://robustagile.com/linkedin-formatter/)**
+
 ![Screenshot of the editor](img/screenshot.png)
 
 ## Features
