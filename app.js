@@ -662,8 +662,15 @@
         </header>
         <main className="max-w-3xl mx-auto px-4 pb-20">
           <${Editor} />
-          <footer className="mt-6 text-center text-xs text-slate-400">
-            Formatting uses Unicode math characters & combining marks — pastes directly into LinkedIn.
+          <footer className="mt-6 text-center text-xs text-slate-400 space-y-1">
+            <p>Formatting uses Unicode math characters & combining marks — pastes directly into LinkedIn.</p>
+            <p>
+              Copyright 2026 ${" "}
+              <a href="https://robustagile.com/" target="_blank" rel="noopener noreferrer"
+                 className="text-slate-500 hover:text-slate-700 underline underline-offset-2">
+                Robust Agile
+              </a>
+            </p>
           </footer>
         </main>
       </div>

@@ -41,6 +41,24 @@ That is the entire deployment.
 - **Outbound internet on first load** — Tailwind, React 18, htm, and emoji-mart load from public CDNs (cdn.tailwindcss.com, unpkg, jsDelivr). The browser caches them after.
 - **HTTPS recommended** — the Copy button uses the modern Clipboard API, which most browsers gate to HTTPS or `http://localhost`. Over plain HTTP it falls back to `document.execCommand("copy")` which still works in most browsers.
 
+### Content Security Policy
+
+If your server sends a `Content-Security-Policy` header, the browser will block the CDN scripts unless those hosts are allowed. Symptom: the console reports *"Loading the script ... violates the following Content Security Policy directive"* followed by `Uncaught ReferenceError: React is not defined`.
+
+Add these to your CSP:
+
+```
+script-src  'self' 'unsafe-inline'
+            https://cdn.tailwindcss.com
+            https://unpkg.com
+            https://cdn.jsdelivr.net;
+connect-src 'self' https://cdn.jsdelivr.net;
+```
+
+`'unsafe-inline'` is required by the Tailwind Play CDN, which generates a `<style>` element at runtime. `connect-src` includes jsDelivr because the emoji picker `fetch()`'s its dataset from there.
+
+If your environment cannot allow public CDNs, the alternative is to self-host the four scripts (React, ReactDOM, htm, emoji-mart) plus the emoji dataset and a precompiled Tailwind stylesheet, and rewrite the `<script>` / `<link>` tags in `index.html` to point at same-origin paths.
+
 ### Tailwind CDN warning (optional fix)
 
 The Tailwind Play CDN prints a *"should not be used in production"* notice in DevTools. It's purely advisory and the page works fine. To silence it, precompile a Tailwind stylesheet and replace the `<script src="https://cdn.tailwindcss.com">` line with a `<link rel="stylesheet">`.
