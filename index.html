@@ -28,6 +28,14 @@
         max-height: 360px;
       }
       textarea { font-feature-settings: "ss01"; }
+
+      /* Always-visible thin scrollbar for the symbol picker (overrides
+         macOS/Chrome auto-hide so users can see tabs/chars overflow). */
+      .symbol-picker { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.25) transparent; }
+      .symbol-picker *::-webkit-scrollbar { width: 8px; height: 8px; }
+      .symbol-picker *::-webkit-scrollbar-track { background: transparent; }
+      .symbol-picker *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.22); border-radius: 4px; }
+      .symbol-picker *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
     </style>
     <script type="application/ld+json">
       {

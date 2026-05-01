@@ -17,7 +17,7 @@ The page deploys by copying the two files to any static-web-server subpath. The 
 
 The IIFE is organized in numbered sections:
 
-1. **Unicode formatting engine** — `BASES`, `STYLED_TO_PLAIN`, `variantChar`, `applyVariant`, `applyDecoration`, `stripVariant`, `stripDecorations`, `stripAllFormatting`, `detectVariants`, `applyFormatting`, `toggleStyle`.
+1. **Unicode formatting engine** — `BASES`, `STYLED_TO_PLAIN`, `VARIANT_TO_TYPESTYLE`, `TYPESTYLE_TO_VARIANT`, `variantChar`, `applyVariant`, `applyDecoration`, `stripVariant`, `stripDecorations`, `stripAllFormatting`, `detectStyle`, `applyFormatting`, `toggleStyle`.
 2. **List formatting** — `detectListType`, `stripListMarkers`, `toggleList`.
 3. **Lucide icons** — inline SVG paths in `ICON_PATHS` + `Icon` component.
 4. **Emoji picker** — thin `EmojiPicker` wrapper around `EmojiMart.Picker` (custom element).
@@ -27,27 +27,34 @@ The IIFE is organized in numbered sections:
 
 ## Formatting model
 
-A formatted string is the composition of a **type style** (a Unicode math block) and zero or more **decorations** (combining diacritics).
+A formatted string is the composition of a **type style** (a Unicode block) and zero or more **decorations** (combining diacritics).
 
-- **Type styles**: `bs` (Bold Sans), `is` (Italic Sans), `bis` (Bold Italic Sans), `bc` (Bold Script), `m` (Monospace), or none (plain ASCII). Bases live in `BASES`. The legacy `b`, `i`, `bi`, `s` blocks are also reverse-mapped for detection but not produced by the toolbar.
+- **Type styles** (toolbar produces these):
+  - `bs` Bold Sans, `is` Italic Sans, `bis` Bold Italic Sans, `m` Monospace — plain math-alphanumeric blocks.
+  - `c` Script (regular), `bc` Bold Script — script blocks; `c` has reserved holes filled by Letterlike Symbols (ℬ ℰ ℱ ℋ ℐ ℒ ℳ ℛ uppercase; ℯ ℊ ℴ lowercase).
+  - `f` Fraktur — uppercase exceptions ℭ ℌ ℑ ℜ ℨ.
+  - `d` Double-struck — uppercase exceptions ℂ ℍ ℕ ℙ ℚ ℝ ℤ; full digits.
+  - `fw` Fullwidth (Ａ-ｚ, ０-９) — fully contiguous.
+  - `ci` Circled (Ⓐ-ⓩ) — digits non-contiguous: ⓪ at U+24EA, ①–⑨ at U+2460+. Handled via `digitFn`.
+- **Per-letter exceptions** live in `BASES[v].upperEx` / `lowerEx`. Variants without a contiguous digit block use `BASES[v].digitFn(digit)`.
+- **Legacy variants** (`b`, `i`, `bi`, `s` — serif blocks) are reverse-mapped for detection of pasted text only; not produced by the toolbar.
 - **Decorations**: underline (U+0332) and strikethrough (U+0336) — combining marks appended after each character.
 
-### Mutual exclusion (toggle layer)
+### Toggle layer (flat type-style model)
 
-`toggleStyle` enforces these rules — the rendering layer assumes they hold:
+`detectStyle` returns `{ typeStyle, underline, strike }` where `typeStyle ∈ {null, "bold", "italic", "boldItalic", "script", "monospace"}`. `toggleStyle` enforces two mutually-exclusive groups:
 
-- **Bold and Italic** stack with each other (sans family). Toggling either clears Script and Monospace.
-- **Script** and **Monospace** are mutually exclusive type styles. Toggling either clears Bold, Italic, and the other.
-- **Underline and Strike** stack with anything.
+- **Type-style group** (Bold, Italic, Bold Italic, Script, Monospace): clicking the active one clears it; clicking a different one replaces. No composition — `Ctrl+B` on italic text replaces italic with bold (it does not produce bold-italic). Bold Italic has its own dedicated button.
+- **Decoration group** (Underline, Strike): same rule within the group — clicking Strike on underlined text replaces underline with strike. Type style and decoration freely combine across groups (e.g. Bold + Underline).
 
-`applyFormatting` chooses the variant in this priority order: script > monospace > bold+italic > bold > italic > (auto-monospace fallback if only underline/strike).
+`applyFormatting` looks up the variant from `TYPESTYLE_TO_VARIANT[typeStyle]`. Legacy serif blocks (b/i/bi, U+1D400/1D434/1D468) fold into bold/italic/boldItalic for detection of pasted text but the toolbar only produces the sans-serif modern set.
 
-### The EN QUAD space rule
+### The EN QUAD space rule (rendering-only fallback)
 
 Combining marks anchor poorly on plain ASCII glyphs and don't render visibly across regular spaces. So:
 
-- If only underline/strike is requested (no other variant), promote to Monospace as a fallback.
-- If the active variant is Monospace AND underline or strike is on, replace `U+0020` with `U+2000` (EN QUAD) so the line/strike continues across spaces.
+- If only underline/strike is requested (no type style chosen), `applyFormatting` silently uses Monospace as a carrier. This is a pure rendering detail — `toggleStyle` and `detectStyle` operate on the user-facing model and don't reason about it. **Caveat:** because the carrier becomes part of the buffer, toggling underline/strike off afterwards leaves you in monospace, not plain — the auto-mono is a one-way trip until the user explicitly clicks Mono off or uses Erase.
+- When the active variant is Monospace AND underline/strike is on, `U+0020` is replaced with `U+2000` (EN QUAD) so the line/strike continues across spaces.
 - Other math-block variants (bold, italic, script) anchor combining marks fine on regular spaces — no swap.
 - `stripAllFormatting` normalises EN QUAD back to a regular space so round-trips stay clean.
 
@@ -97,7 +104,9 @@ python3 -m http.server 8123
 
 Useful sanity checks after touching the formatting engine:
 - Type text, select all, click each toolbar button — verify the output is what you expect.
-- Switch between Bold → Script → Monospace and back; the previous variant should be replaced cleanly, not stacked.
+- Switch between Bold → Italic → Bold Italic → Script → Monospace and back; each click should replace the previous type style cleanly (no stacking, no residue).
+- Click the active type-style button — it should clear and return to plain.
+- Apply Bold, then Underline; switch to Script — underline should survive the type-style change.
 - Apply Strikethrough alone and Strikethrough + Bold; both should render visibly across spaces.
 - Apply Erase formatting on a styled selection and verify it returns to plain ASCII (including spaces — no leftover EN QUAD).
 - Apply a list, then toggle the same list type — markers should be stripped.

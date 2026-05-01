@@ -12,16 +12,41 @@
   // ────────────────────────────────────────────────────────────────────────────
 
   // Block bases for uppercase A, lowercase a, digit 0 in each variant.
+  // upperEx/lowerEx hold per-letter overrides (Unicode reserves several script,
+  // fraktur, and double-struck math codepoints — the canonical glyph lives in
+  // the Letterlike Symbols block instead). digitFn handles non-contiguous digit
+  // sets (circled: 0 at U+24EA, 1–9 at U+2460+).
   const BASES = {
+    // Modern set produced by the toolbar.
+    bs:  { upper: 0x1d5d4, lower: 0x1d5ee, digit: 0x1d7ec },
+    is:  { upper: 0x1d608, lower: 0x1d622, digit: null    },
+    bis: { upper: 0x1d63c, lower: 0x1d656, digit: null    },
+    c: { // Script (regular)
+      upper: 0x1d49c, lower: 0x1d4b6, digit: null,
+      upperEx: { B: "ℬ", E: "ℰ", F: "ℱ", H: "ℋ", I: "ℐ", L: "ℒ", M: "ℳ", R: "ℛ" },
+      lowerEx: { e: "ℯ", g: "ℊ", o: "ℴ" },
+    },
+    bc:  { upper: 0x1d4d0, lower: 0x1d4ea, digit: null    }, // Bold Script
+    f: { // Fraktur
+      upper: 0x1d504, lower: 0x1d51e, digit: null,
+      upperEx: { C: "ℭ", H: "ℌ", I: "ℑ", R: "ℜ", Z: "ℨ" },
+    },
+    d: { // Double-struck (Blackboard bold)
+      upper: 0x1d538, lower: 0x1d552, digit: 0x1d7d8,
+      upperEx: { C: "ℂ", H: "ℍ", N: "ℕ", P: "ℙ", Q: "ℚ", R: "ℝ", Z: "ℤ" },
+    },
+    fw: { upper: 0xff21, lower: 0xff41, digit: 0xff10 }, // Fullwidth
+    ci: { // Circled
+      upper: 0x24b6, lower: 0x24d0, digit: null,
+      digitFn: (d) => d === 0 ? "⓪" : String.fromCodePoint(0x2460 + d - 1),
+    },
+    m:   { upper: 0x1d670, lower: 0x1d68a, digit: 0x1d7f6 },
+
+    // Legacy serif blocks — only for detecting pasted text; not produced.
     b:   { upper: 0x1d400, lower: 0x1d41a, digit: 0x1d7ce },
     i:   { upper: 0x1d434, lower: 0x1d44e, digit: null    },
     bi:  { upper: 0x1d468, lower: 0x1d482, digit: null    },
     s:   { upper: 0x1d5a0, lower: 0x1d5ba, digit: 0x1d7e2 },
-    bs:  { upper: 0x1d5d4, lower: 0x1d5ee, digit: 0x1d7ec },
-    is:  { upper: 0x1d608, lower: 0x1d622, digit: null    },
-    bis: { upper: 0x1d63c, lower: 0x1d656, digit: null    },
-    bc:  { upper: 0x1d4d0, lower: 0x1d4ea, digit: null    }, // Bold Script
-    m:   { upper: 0x1d670, lower: 0x1d68a, digit: 0x1d7f6 },
   };
 
   // italic h has no math italic codepoint — uses ℎ (U+210E)
@@ -39,13 +64,18 @@
   for (const v of Object.keys(BASES)) {
     const b = BASES[v];
     for (let i = 0; i < 26; i++) {
-      STYLED_TO_PLAIN.set(b.upper + i, { plain: String.fromCodePoint(CP_A_UP + i), variant: v });
-      STYLED_TO_PLAIN.set(b.lower + i, { plain: String.fromCodePoint(CP_A_LO + i), variant: v });
+      const upPlain = String.fromCodePoint(CP_A_UP + i);
+      const loPlain = String.fromCodePoint(CP_A_LO + i);
+      const upStyled = (b.upperEx && b.upperEx[upPlain]) || String.fromCodePoint(b.upper + i);
+      const loStyled = (b.lowerEx && b.lowerEx[loPlain]) || String.fromCodePoint(b.lower + i);
+      STYLED_TO_PLAIN.set(upStyled.codePointAt(0), { plain: upPlain, variant: v });
+      STYLED_TO_PLAIN.set(loStyled.codePointAt(0), { plain: loPlain, variant: v });
     }
-    if (b.digit !== null) {
-      for (let i = 0; i < 10; i++) {
-        STYLED_TO_PLAIN.set(b.digit + i, { plain: String.fromCodePoint(CP_ZERO + i), variant: v });
-      }
+    for (let i = 0; i < 10; i++) {
+      let styled = null;
+      if (b.digitFn) styled = b.digitFn(i);
+      else if (b.digit !== null) styled = String.fromCodePoint(b.digit + i);
+      if (styled) STYLED_TO_PLAIN.set(styled.codePointAt(0), { plain: String.fromCodePoint(CP_ZERO + i), variant: v });
     }
   }
   STYLED_TO_PLAIN.set(0x210e, { plain: "h", variant: "i" });
@@ -53,12 +83,20 @@
   function variantChar(ch, variant) {
     const cp = ch.codePointAt(0);
     if (cp === undefined) return ch;
-    if (variant === "i" && ITALIC_EXCEPTIONS[ch]) return ITALIC_EXCEPTIONS[ch];
     const base = BASES[variant];
-    if (cp >= CP_A_UP && cp <= CP_A_UP + 25) return String.fromCodePoint(base.upper + (cp - CP_A_UP));
-    if (cp >= CP_A_LO && cp <= CP_A_LO + 25) return String.fromCodePoint(base.lower + (cp - CP_A_LO));
-    if (cp >= CP_ZERO && cp <= CP_ZERO + 9 && base.digit !== null) {
-      return String.fromCodePoint(base.digit + (cp - CP_ZERO));
+    if (!base) return ch;
+    if (variant === "i" && ITALIC_EXCEPTIONS[ch]) return ITALIC_EXCEPTIONS[ch];
+    if (cp >= CP_A_UP && cp <= CP_A_UP + 25) {
+      if (base.upperEx && base.upperEx[ch]) return base.upperEx[ch];
+      return String.fromCodePoint(base.upper + (cp - CP_A_UP));
+    }
+    if (cp >= CP_A_LO && cp <= CP_A_LO + 25) {
+      if (base.lowerEx && base.lowerEx[ch]) return base.lowerEx[ch];
+      return String.fromCodePoint(base.lower + (cp - CP_A_LO));
+    }
+    if (cp >= CP_ZERO && cp <= CP_ZERO + 9) {
+      if (base.digitFn) return base.digitFn(cp - CP_ZERO);
+      if (base.digit !== null) return String.fromCodePoint(base.digit + (cp - CP_ZERO));
     }
     return ch;
   }
@@ -104,8 +142,38 @@
     return out;
   }
 
-  function detectVariants(text) {
-    let total = 0, bold = 0, italic = 0, script = 0, mono = 0, underline = 0, strike = 0;
+  // Map BASES variants to user-facing type-style names. The toolbar produces
+  // only the modern set (bs/is/bis/bc/m); legacy serif blocks (b/i/bi) fold in
+  // for detection of pasted text. 's' (sans-regular) is visually plain — null.
+  const VARIANT_TO_TYPESTYLE = {
+    bs: "bold",        b:  "bold",
+    is: "italic",      i:  "italic",
+    bis: "boldItalic", bi: "boldItalic",
+    c:  "script",
+    bc: "boldScript",
+    f:  "fraktur",
+    d:  "doubleStruck",
+    fw: "fullwidth",
+    ci: "circled",
+    m:  "monospace",
+  };
+
+  const TYPESTYLE_TO_VARIANT = {
+    bold:         "bs",
+    italic:       "is",
+    boldItalic:   "bis",
+    script:       "c",
+    boldScript:   "bc",
+    fraktur:      "f",
+    doubleStruck: "d",
+    fullwidth:    "fw",
+    circled:      "ci",
+    monospace:    "m",
+  };
+
+  function detectStyle(text) {
+    let total = 0, underline = 0, strike = 0;
+    const typeCounts = {};
     let prevFormattable = false;
     for (const ch of text) {
       const cp = ch.codePointAt(0);
@@ -116,25 +184,21 @@
       if (isPlain || styled) {
         total++;
         prevFormattable = true;
-        if (styled) {
-          const v = styled.variant;
-          if (v === "bs" || v === "b" || v === "bis" || v === "bi") bold++;
-          if (v === "is" || v === "i" || v === "bis" || v === "bi") italic++;
-          if (v === "bc") script++;
-          if (v === "m")  mono++;
-        }
+        const ts = styled ? VARIANT_TO_TYPESTYLE[styled.variant] : null;
+        if (ts) typeCounts[ts] = (typeCounts[ts] || 0) + 1;
       } else {
         prevFormattable = false;
       }
     }
     if (total === 0) {
-      return { bold: false, italic: false, script: false, monospace: false, underline: false, strike: false };
+      return { typeStyle: null, underline: false, strike: false };
+    }
+    let typeStyle = null;
+    for (const ts of Object.keys(typeCounts)) {
+      if (typeCounts[ts] === total) { typeStyle = ts; break; }
     }
     return {
-      bold:      bold      === total,
-      italic:    italic    === total,
-      script:    script    === total,
-      monospace: mono      === total,
+      typeStyle,
       underline: underline > 0 && underline >= Math.floor(total * 0.5),
       strike:    strike    > 0 && strike    >= Math.floor(total * 0.5),
     };
@@ -142,18 +206,11 @@
 
   function applyFormatting(text, opts) {
     let result = stripAllFormatting(text);
-    let variant = null;
-    // Script and Monospace are exclusive type styles — the toggle layer keeps
-    // them mutually exclusive with bold/italic, but if both happen to be set
-    // we honor script/monospace first.
-    if      (opts.script)               variant = "bc";
-    else if (opts.monospace)            variant = "m";
-    else if (opts.bold && opts.italic)  variant = "bis";
-    else if (opts.bold)                 variant = "bs";
-    else if (opts.italic)               variant = "is";
-    // Underline/strike on plain ASCII anchors the combining mark poorly,
-    // so promote to Monospace as a fallback when no other variant is chosen.
-    else if (opts.underline || opts.strike) variant = "m";
+    let variant = opts.typeStyle ? TYPESTYLE_TO_VARIANT[opts.typeStyle] : null;
+    // Combining underline/strike anchors poorly on plain ASCII — when only a
+    // decoration is requested, fall back to Monospace as a carrier. Pure
+    // rendering detail; toggleStyle/detectStyle never expose it.
+    if (!variant && (opts.underline || opts.strike)) variant = "m";
 
     if (variant) result = applyVariant(result, variant);
 
@@ -170,31 +227,23 @@
     return result;
   }
 
+  // Type styles (bold, italic, boldItalic, script, monospace) are mutually
+  // exclusive within their group; same for decorations (underline, strike).
+  // Type style + decoration freely combine (e.g. bold + underline).
+  // In each group: clicking the active button clears, clicking a different
+  // one replaces.
   function toggleStyle(text, style) {
-    const current = detectVariants(text);
-    const next = {
-      bold:      current.bold,
-      italic:    current.italic,
-      script:    current.script,
-      monospace: current.monospace,
-      underline: current.underline,
-      strike:    current.strike,
-    };
-    if (style === "bold" || style === "italic") {
-      // Bold/italic family — clear script/monospace, flip the chosen flag.
-      next.script = false;
-      next.monospace = false;
-      next[style] = !current[style];
-    } else if (style === "script") {
-      const turnOn = !current.script;
-      next.bold = false; next.italic = false; next.monospace = false;
-      next.script = turnOn;
-    } else if (style === "monospace") {
-      const turnOn = !current.monospace;
-      next.bold = false; next.italic = false; next.script = false;
-      next.monospace = turnOn;
-    } else if (style === "underline" || style === "strike") {
-      next[style] = !current[style];
+    const current = detectStyle(text);
+    const next = { ...current };
+    if (style === "underline" || style === "strike") {
+      if (current[style]) {
+        next[style] = false;
+      } else {
+        next.underline = style === "underline";
+        next.strike    = style === "strike";
+      }
+    } else {
+      next.typeStyle = current.typeStyle === style ? null : style;
     }
     return applyFormatting(text, next);
   }
@@ -278,7 +327,7 @@
     return emojiDataPromise;
   }
 
-  function EmojiPicker({ onSelect, onClose }) {
+  function EmojiPicker({ onSelect }) {
     const containerRef = useRef(null);
 
     useEffect(() => {
@@ -291,15 +340,13 @@
           containerRef.current.textContent = "Emoji picker failed to load.";
           return;
         }
+        // We deliberately don't pass emoji-mart's onClickOutside — its handler
+        // is registered on document and persists past removeChild on unmount,
+        // which fires onClose on the next click and prevents reopening. Outside-
+        // click is handled by the parent Editor instead.
         pickerEl = new EmojiMart.Picker({
           data,
           onEmojiSelect: (emoji) => onSelect(emoji.native),
-          onClickOutside: (e) => {
-            // emoji-mart's outside detection covers the picker; also close on its signal.
-            if (containerRef.current && !containerRef.current.contains(e.target)) {
-              onClose();
-            }
-          },
           previewPosition: "none",
           navPosition: "bottom",
           maxFrequentRows: 1,
@@ -313,9 +360,72 @@
         cancelled = true;
         if (pickerEl && pickerEl.parentNode) pickerEl.parentNode.removeChild(pickerEl);
       };
-    }, [onSelect, onClose]);
+    }, [onSelect]);
 
     return html`<div ref=${containerRef} className="rounded-lg overflow-hidden" />`;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Symbol picker (Unicode blocks)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // Iterate a Unicode block range, dropping reserved/unassigned codepoints.
+  // \p{Assigned} matches "any code point assigned to an abstract character" —
+  // exactly the gaps we want to skip so the grid doesn't show tofu.
+  function blockChars(start, end) {
+    const out = [];
+    for (let cp = start; cp <= end; cp++) {
+      const ch = String.fromCodePoint(cp);
+      if (/\p{Assigned}/u.test(ch)) out.push(ch);
+    }
+    return out;
+  }
+
+  const SYMBOL_BLOCKS = [
+    { name: "Icons",     chars: blockChars(0x2700, 0x27bf) },
+    { name: "Arrows",    chars: blockChars(0x2190, 0x21ff) },
+    { name: "Shapes",    chars: blockChars(0x25a0, 0x25ff) },
+    { name: "Currency",  chars: ["$", ...blockChars(0x20a0, 0x20cf)] },
+    { name: "Misc Tech", chars: blockChars(0x2300, 0x23ff) },
+    { name: "Math",      chars: blockChars(0x2200, 0x22ff) },
+    { name: "Math+",     chars: blockChars(0x2a00, 0x2aff) },
+    { name: "Misc Math", chars: [...blockChars(0x27c0, 0x27ef), ...blockChars(0x2980, 0x29ff)] },
+  ];
+
+  function SymbolPicker({ onSelect }) {
+    const [activeTab, setActiveTab] = useState(0);
+    const block = SYMBOL_BLOCKS[activeTab];
+    return html`
+      <div className="symbol-picker bg-white rounded-lg shadow-xl border border-zinc-200 w-[420px] h-[360px] flex flex-col overflow-hidden">
+        <div className="flex border-b border-zinc-200 overflow-x-auto flex-shrink-0">
+          ${SYMBOL_BLOCKS.map((b, i) => html`
+            <button
+              key=${b.name}
+              type="button"
+              onClick=${() => setActiveTab(i)}
+              className=${`px-3 py-2 text-xs font-medium whitespace-nowrap flex-shrink-0 -mb-px border-b-2 transition-colors ${
+                i === activeTab
+                  ? "text-blue-600 border-blue-600"
+                  : "text-zinc-600 hover:text-zinc-900 border-transparent"
+              }`}
+            >${b.name}</button>
+          `)}
+        </div>
+        <div className="flex-1 overflow-y-auto p-1">
+          <div className="grid grid-cols-12 gap-0.5">
+            ${block.chars.map((ch) => html`
+              <button
+                key=${ch.codePointAt(0)}
+                type="button"
+                onClick=${() => onSelect(ch)}
+                title=${`U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`}
+                className="aspect-square flex items-center justify-center text-lg hover:bg-zinc-100 active:bg-zinc-200 rounded transition-colors"
+              >${ch}</button>
+            `)}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -365,10 +475,13 @@
   function Editor() {
     const [value, setValue] = useState("");
     const [emojiOpen, setEmojiOpen] = useState(false);
+    const [symbolsOpen, setSymbolsOpen] = useState(false);
     const [copied, setCopied] = useState(false);
     const textareaRef = useRef(null);
     const emojiButtonRef = useRef(null);
     const emojiPopoverRef = useRef(null);
+    const symbolsButtonRef = useRef(null);
+    const symbolsPopoverRef = useRef(null);
 
     const [history, setHistory] = useState([{ value: "", selection: { start: 0, end: 0 } }]);
     const [historyIndex, setHistoryIndex] = useState(0);
@@ -450,15 +563,21 @@
       commitChange(before + transformed + after, { start: lineStart, end: lineStart + transformed.length }, true);
     };
 
-    const onBold      = () => transformSelection((t) => toggleStyle(t, "bold"));
-    const onItalic    = () => transformSelection((t) => toggleStyle(t, "italic"));
-    const onUnderline = () => transformSelection((t) => toggleStyle(t, "underline"));
-    const onStrike    = () => transformSelection((t) => toggleStyle(t, "strike"));
-    const onScript    = () => transformSelection((t) => toggleStyle(t, "script"));
-    const onMono      = () => transformSelection((t) => toggleStyle(t, "monospace"));
-    const onErase     = () => transformSelection(stripAllFormatting);
-    const onBullet    = () => transformLineRange((t) => toggleList(t, "BULLETED"));
-    const onNumber    = () => transformLineRange((t) => toggleList(t, "NUMBERED"));
+    const onBold         = () => transformSelection((t) => toggleStyle(t, "bold"));
+    const onItalic       = () => transformSelection((t) => toggleStyle(t, "italic"));
+    const onBoldItalic   = () => transformSelection((t) => toggleStyle(t, "boldItalic"));
+    const onScript       = () => transformSelection((t) => toggleStyle(t, "script"));
+    const onBoldScript   = () => transformSelection((t) => toggleStyle(t, "boldScript"));
+    const onFraktur      = () => transformSelection((t) => toggleStyle(t, "fraktur"));
+    const onDoubleStruck = () => transformSelection((t) => toggleStyle(t, "doubleStruck"));
+    const onFullwidth    = () => transformSelection((t) => toggleStyle(t, "fullwidth"));
+    const onCircled      = () => transformSelection((t) => toggleStyle(t, "circled"));
+    const onMono         = () => transformSelection((t) => toggleStyle(t, "monospace"));
+    const onUnderline    = () => transformSelection((t) => toggleStyle(t, "underline"));
+    const onStrike       = () => transformSelection((t) => toggleStyle(t, "strike"));
+    const onErase        = () => transformSelection(stripAllFormatting);
+    const onBullet       = () => transformLineRange((t) => toggleList(t, "BULLETED"));
+    const onNumber       = () => transformLineRange((t) => toggleList(t, "NUMBERED"));
 
     const flushPending = () => {
       if (debouncedTimer.current !== null) {
@@ -489,17 +608,17 @@
       setSelectionAfterRender(entry.selection);
     };
 
-    const insertEmoji = useCallback((emoji) => {
+    const insertChar = useCallback((ch) => {
       const ta = textareaRef.current;
       const start = ta ? (ta.selectionStart || 0) : value.length;
       const end   = ta ? (ta.selectionEnd   || 0) : value.length;
-      const newValue = value.slice(0, start) + emoji + value.slice(end);
-      const cursor = start + emoji.length;
+      const newValue = value.slice(0, start) + ch + value.slice(end);
+      const cursor = start + ch.length;
       commitChange(newValue, { start: cursor, end: cursor }, true);
-      setEmojiOpen(false);
     }, [value]);
 
-    const closeEmoji = useCallback(() => setEmojiOpen(false), []);
+    const insertEmoji  = useCallback((emoji) => { insertChar(emoji); setEmojiOpen(false);   }, [insertChar]);
+    const insertSymbol = useCallback((ch)    => { insertChar(ch);    setSymbolsOpen(false); }, [insertChar]);
 
     const onCopy = async () => {
       try {
@@ -532,13 +651,33 @@
       return () => document.removeEventListener("mousedown", handler);
     }, [emojiOpen]);
 
-    // Escape to close emoji popover
+    // Close symbols popover on outside click
     useEffect(() => {
-      if (!emojiOpen) return;
-      const handler = (e) => { if (e.key === "Escape") setEmojiOpen(false); };
+      if (!symbolsOpen) return;
+      const handler = (e) => {
+        const target = e.target;
+        if (
+          symbolsPopoverRef.current && !symbolsPopoverRef.current.contains(target) &&
+          symbolsButtonRef.current && !symbolsButtonRef.current.contains(target)
+        ) {
+          setSymbolsOpen(false);
+        }
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }, [symbolsOpen]);
+
+    // Escape to close any open popover
+    useEffect(() => {
+      if (!emojiOpen && !symbolsOpen) return;
+      const handler = (e) => {
+        if (e.key !== "Escape") return;
+        setEmojiOpen(false);
+        setSymbolsOpen(false);
+      };
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
-    }, [emojiOpen]);
+    }, [emojiOpen, symbolsOpen]);
 
     const onKeyDown = (e) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -561,73 +700,92 @@
 
     return html`
       <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-visible">
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-zinc-100 flex-wrap">
-          <${ToolGroup}>
-            <${ToolButton} onClick=${onBold}      title="Bold (Ctrl+B)"      icon=${html`<${Icon} name="bold" />`} />
-            <${ToolButton} onClick=${onItalic}    title="Italic (Ctrl+I)"    icon=${html`<${Icon} name="italic" />`} />
-            <${ToolButton} onClick=${onUnderline} title="Underline (Ctrl+U)" icon=${html`<${Icon} name="underline" />`} />
-            <${ToolButton} onClick=${onStrike}    title="Strikethrough"      icon=${html`<${Icon} name="strikethrough" />`} />
-          <//>
+        <div className="border-b border-zinc-100">
+          <div className="flex items-center gap-1 px-3 pt-2 pb-1 flex-wrap">
+            <${ToolGroup}>
+              <${ToolButton} onClick=${onBold}       title="Bold (Ctrl+B)"   icon=${html`<${Icon} name="bold" />`} />
+              <${ToolButton} onClick=${onItalic}     title="Italic (Ctrl+I)" icon=${html`<${Icon} name="italic" />`} />
+              <${ToolButton} onClick=${onBoldItalic} title="Bold Italic"     icon=${html`<span className="font-semibold italic text-base leading-none">𝘽</span>`} />
+            <//>
 
-          <${Divider} />
+            <${Divider} />
 
-          <${ToolGroup}>
-            <${ToolButton}
-              onClick=${onScript}
-              title="Script"
-              icon=${html`<span className="font-semibold text-base leading-none -mt-0.5">𝓢</span>`}
-            />
-            <${ToolButton}
-              onClick=${onMono}
-              title="Monospace"
-              icon=${html`<span className="font-mono text-base leading-none">𝙼</span>`}
-            />
-          <//>
+            <${ToolGroup}>
+              <${ToolButton} onClick=${onScript}       title="Script"        icon=${html`<span className="text-base leading-none -mt-0.5">𝒮</span>`} />
+              <${ToolButton} onClick=${onBoldScript}   title="Bold Script"   icon=${html`<span className="font-semibold text-base leading-none -mt-0.5">𝓢</span>`} />
+              <${ToolButton} onClick=${onFraktur}      title="Fraktur"       icon=${html`<span className="text-base leading-none">𝔉</span>`} />
+              <${ToolButton} onClick=${onDoubleStruck} title="Double-struck" icon=${html`<span className="text-base leading-none">𝔻</span>`} />
+              <${ToolButton} onClick=${onFullwidth}    title="Fullwidth"     icon=${html`<span className="text-sm leading-none">Ａ</span>`} />
+              <${ToolButton} onClick=${onCircled}      title="Circled"       icon=${html`<span className="text-base leading-none">Ⓒ</span>`} />
+              <${ToolButton} onClick=${onMono}         title="Monospace"     icon=${html`<span className="font-mono text-base leading-none">𝙼</span>`} />
+            <//>
 
-          <${Divider} />
+            <${Divider} />
 
-          <${ToolGroup}>
-            <div className="relative">
-              <${ToolButton}
-                ref=${emojiButtonRef}
-                onClick=${() => setEmojiOpen((o) => !o)}
-                title="Insert emoji"
-                icon=${html`<${Icon} name="smilePlus" />`}
-                active=${emojiOpen}
-              />
-              ${emojiOpen ? html`
-                <div ref=${emojiPopoverRef} className="absolute z-50 left-0 mt-2">
-                  <${EmojiPicker} onSelect=${insertEmoji} onClose=${closeEmoji} />
-                </div>
-              ` : null}
+            <${ToolGroup}>
+              <${ToolButton} onClick=${onUnderline} title="Underline (Ctrl+U)" icon=${html`<${Icon} name="underline" />`} />
+              <${ToolButton} onClick=${onStrike}    title="Strikethrough"      icon=${html`<${Icon} name="strikethrough" />`} />
+            <//>
+          </div>
+
+          <div className="flex items-center gap-1 px-3 pt-1 pb-2 flex-wrap">
+            <${ToolGroup}>
+              <div className="relative">
+                <${ToolButton}
+                  ref=${emojiButtonRef}
+                  onClick=${() => { setEmojiOpen((o) => !o); setSymbolsOpen(false); }}
+                  title="Insert emoji"
+                  icon=${html`<${Icon} name="smilePlus" />`}
+                  active=${emojiOpen}
+                />
+                ${emojiOpen ? html`
+                  <div ref=${emojiPopoverRef} className="absolute z-50 left-0 mt-2">
+                    <${EmojiPicker} onSelect=${insertEmoji} />
+                  </div>
+                ` : null}
+              </div>
+              <div className="relative">
+                <${ToolButton}
+                  ref=${symbolsButtonRef}
+                  onClick=${() => { setSymbolsOpen((o) => !o); setEmojiOpen(false); }}
+                  title="Insert symbol"
+                  icon=${html`<span className="text-base leading-none">Ω</span>`}
+                  active=${symbolsOpen}
+                />
+                ${symbolsOpen ? html`
+                  <div ref=${symbolsPopoverRef} className="absolute z-50 left-0 mt-2">
+                    <${SymbolPicker} onSelect=${insertSymbol} />
+                  </div>
+                ` : null}
+              </div>
+            <//>
+
+            <${Divider} />
+
+            <${ToolGroup}>
+              <${ToolButton} onClick=${onUndo}  disabled=${!canUndo} title="Undo (Ctrl+Z)"        icon=${html`<${Icon} name="undo" />`} />
+              <${ToolButton} onClick=${onRedo}  disabled=${!canRedo} title="Redo (Ctrl+Shift+Z)"  icon=${html`<${Icon} name="redo" />`} />
+              <${ToolButton} onClick=${onErase}                     title="Erase formatting"     icon=${html`<${Icon} name="eraser" />`} />
+            <//>
+
+            <${Divider} />
+
+            <${ToolGroup}>
+              <${ToolButton} onClick=${onBullet} title="Bullet list"   icon=${html`<${Icon} name="list" />`} />
+              <${ToolButton} onClick=${onNumber} title="Numbered list" icon=${html`<${Icon} name="listOrdered" />`} />
+            <//>
+
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-zinc-400 tabular-nums">${charCount.toLocaleString()} chars</span>
+              <button
+                type="button"
+                onClick=${onCopy}
+                className=${`inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md border transition-colors ${copyClass}`}
+              >
+                <${Icon} name=${copied ? "check" : "copy"} />
+                ${copied ? "Copied!" : "Copy text"}
+              </button>
             </div>
-          <//>
-
-          <${Divider} />
-
-          <${ToolGroup}>
-            <${ToolButton} onClick=${onUndo}  disabled=${!canUndo} title="Undo (Ctrl+Z)"        icon=${html`<${Icon} name="undo" />`} />
-            <${ToolButton} onClick=${onRedo}  disabled=${!canRedo} title="Redo (Ctrl+Shift+Z)"  icon=${html`<${Icon} name="redo" />`} />
-            <${ToolButton} onClick=${onErase}                     title="Erase formatting"     icon=${html`<${Icon} name="eraser" />`} />
-          <//>
-
-          <${Divider} />
-
-          <${ToolGroup}>
-            <${ToolButton} onClick=${onBullet} title="Bullet list"   icon=${html`<${Icon} name="list" />`} />
-            <${ToolButton} onClick=${onNumber} title="Numbered list" icon=${html`<${Icon} name="listOrdered" />`} />
-          <//>
-
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-zinc-400 tabular-nums">${charCount.toLocaleString()} chars</span>
-            <button
-              type="button"
-              onClick=${onCopy}
-              className=${`inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md border transition-colors ${copyClass}`}
-            >
-              <${Icon} name=${copied ? "check" : "copy"} />
-              ${copied ? "Copied!" : "Copy text"}
-            </button>
           </div>
         </div>
 
