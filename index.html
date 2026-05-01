@@ -36,6 +36,32 @@
       .symbol-picker *::-webkit-scrollbar-track { background: transparent; }
       .symbol-picker *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.22); border-radius: 4px; }
       .symbol-picker *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
+
+      /* Hide scrollbar for the mobile toolbar's horizontal scroll area. */
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+
+      /* Bottom-sheet slide-up animation (mobile popovers). */
+      @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      .animate-slide-up { animation: slide-up 200ms ease-out; }
+
+      @media (max-width: 767px) {
+        /* Emoji-mart picker fills the bottom-sheet width/height on mobile.
+           min-height: 0 overrides emoji-mart's internal 230px floor (otherwise
+           the picker grows past its container). flex: 1 + parent-as-flex makes
+           the picker fit its share of the container exactly. */
+        em-emoji-picker {
+          --border-radius: 0;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          height: 100%;
+          max-height: 100%;
+          min-height: 0;
+          flex: 1;
+          overflow: hidden;
+        }
+      }
     </style>
     <script type="application/ld+json">
       {

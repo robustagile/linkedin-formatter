@@ -8,21 +8,23 @@ A small static web tool that formats text using Unicode characters so the stylin
 
 ## Features
 
-- **Bold / Italic / Underline / Strikethrough** — applied to the current selection, toggle on/off.
-- **Script** (𝓢𝒸𝓻𝒾𝓹𝓽) and **Monospace** (𝙼𝚘𝚗𝚘) — alternative type styles.
+- **Type styles** — Bold (𝗕), Italic (𝘐), Bold Italic (𝘽); Script (𝒮) and Bold Script (𝓢); Fraktur (𝔉), Double-struck (𝔻), Fullwidth (Ａ), Circled (Ⓒ), Monospace (𝙼). Mutually exclusive — picking a different style replaces the current one; clicking the active style clears it.
+- **Underline / Strikethrough** — combining diacritics that stack with any type style. Mutually exclusive with each other.
 - **Bullet** and **Numbered** lists — operate on whole lines that intersect the selection; toggling the same list type strips it.
 - **Emoji picker** — full emoji-mart picker (~1,800 emojis with search and categories).
+- **Symbol picker** — Unicode block browser with tabs for **Icons** (Dingbats), **Arrows**, **Shapes**, **Currency**, **Misc Tech**, **Math**, **Math+** (supplemental), and **Misc Math** — about 1,400 characters total, click to insert. Hover any glyph to see its codepoint.
 - **Undo / Redo** — Ctrl+Z, Ctrl+Shift+Z, or the toolbar buttons. Keyboard shortcuts for B / I / U also bound.
 - **Erase formatting** — strips Unicode styling from the selection.
 - **Copy text** — copies the textarea contents to the clipboard.
+- **Mobile responsive** — below 768px the toolbar moves to a sticky bottom bar (single horizontal scroll, Copy pinned right); the emoji and symbol pickers slide up as full-width bottom sheets. Touch targets bump to 44×44.
 
-The toolbar operates on the textarea selection. With no selection, formatting is applied to the entire text.
+The toolbar operates on the textarea selection. With no selection, formatting is applied to the entire text. List buttons always expand to whole-line boundaries.
 
 ## How it works
 
-Letters and digits are mapped to the Unicode Mathematical Alphanumeric blocks (U+1D400…U+1D7FF). Underline and strikethrough are applied as combining diacritics (U+0332 and U+0336) appended after each character.
+Letters and digits are mapped to a handful of Unicode blocks: the Mathematical Alphanumeric blocks (U+1D400…U+1D7FF) for sans/script/fraktur/double-struck/monospace, the Letterlike Symbols block (U+2100s) to fill in the canonical glyphs that the math blocks reserve (ℬ ℋ ℙ ℂ ℕ ℛ etc.), Halfwidth and Fullwidth Forms (U+FF00s) for fullwidth, and Enclosed Alphanumerics (U+2460s, U+24B6s) for circled. Underline and strikethrough are applied as combining diacritics (U+0332 and U+0336) appended after each character.
 
-When underline or strikethrough is used without bold or italic, the text is first converted to the Monospace block, and regular spaces are swapped to EN QUAD (U+2000) so the line continues across word breaks.
+When underline or strikethrough is used without a type style, the text is first converted to the Monospace block, and regular spaces are swapped to EN QUAD (U+2000) so the line continues across word breaks.
 
 ## Deploying
 

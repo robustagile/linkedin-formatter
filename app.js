@@ -352,6 +352,7 @@
           maxFrequentRows: 1,
           autoFocus: true,
           theme: "light",
+          dynamicWidth: true,
         });
         containerRef.current.appendChild(pickerEl);
       });
@@ -362,7 +363,10 @@
       };
     }, [onSelect]);
 
-    return html`<div ref=${containerRef} className="rounded-lg overflow-hidden" />`;
+    // On mobile the picker fills the bottom sheet (flex-1, w-full); on desktop
+    // it sizes to emoji-mart's intrinsic 360px and rounds itself. flex+flex-col
+    // is required on mobile so the picker (a flex child via CSS) sizes correctly.
+    return html`<div ref=${containerRef} className="overflow-hidden flex flex-col flex-1 w-full md:block md:flex-initial md:w-[360px] md:h-[360px] md:rounded-lg" />`;
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -396,7 +400,7 @@
     const [activeTab, setActiveTab] = useState(0);
     const block = SYMBOL_BLOCKS[activeTab];
     return html`
-      <div className="symbol-picker bg-white rounded-lg shadow-xl border border-zinc-200 w-[420px] h-[360px] flex flex-col overflow-hidden">
+      <div className="symbol-picker bg-white flex flex-col overflow-hidden flex-1 w-full md:flex-initial md:w-[420px] md:h-[360px] md:rounded-lg md:shadow-xl md:border md:border-zinc-200">
         <div className="flex border-b border-zinc-200 overflow-x-auto flex-shrink-0">
           ${SYMBOL_BLOCKS.map((b, i) => html`
             <button
@@ -412,7 +416,7 @@
           `)}
         </div>
         <div className="flex-1 overflow-y-auto p-1">
-          <div className="grid grid-cols-12 gap-0.5">
+          <div className="grid grid-cols-9 md:grid-cols-12 gap-0.5">
             ${block.chars.map((ch) => html`
               <button
                 key=${ch.codePointAt(0)}
@@ -427,6 +431,58 @@
       </div>
     `;
   }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Responsive helpers
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // True when viewport is below Tailwind's `md` breakpoint (768px). Drives the
+  // mobile/desktop layout split: bottom-sheet popovers, fixed bottom toolbar,
+  // larger touch targets, no char count.
+  function useIsMobile() {
+    const query = "(max-width: 767px)";
+    const [matches, setMatches] = useState(() =>
+      typeof window !== "undefined" && window.matchMedia(query).matches
+    );
+    useEffect(() => {
+      const mq = window.matchMedia(query);
+      const handler = (e) => setMatches(e.matches);
+      mq.addEventListener("change", handler);
+      return () => mq.removeEventListener("change", handler);
+    }, []);
+    return matches;
+  }
+
+  // Wraps a popover. On mobile: portals a slide-up sheet (with backdrop) above
+  // the fixed bottom toolbar. On desktop: renders an absolutely-positioned
+  // anchored popover (the original behavior). The forwarded ref lands on the
+  // element the parent's outside-click handler tests against.
+  const BottomSheet = forwardRef(function BottomSheet({ open, onClose, children, className = "" }, ref) {
+    const isMobile = useIsMobile();
+    if (!open) return null;
+
+    if (isMobile) {
+      return ReactDOM.createPortal(html`
+        <div>
+          <div className="fixed inset-x-0 top-0 bottom-14 z-40 bg-black/40" onMouseDown=${onClose} />
+          <div
+            ref=${ref}
+            className=${`fixed left-0 right-0 bottom-14 z-50 bg-white rounded-t-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up ${className}`}
+            style=${{ maxHeight: "65dvh" }}
+          >
+            <div className="h-1 w-12 bg-zinc-300 rounded-full mx-auto my-2 flex-shrink-0" />
+            ${children}
+          </div>
+        </div>
+      `, document.body);
+    }
+
+    return html`
+      <div ref=${ref} className=${`absolute z-50 left-0 mt-2 ${className}`}>
+        ${children}
+      </div>
+    `;
+  });
 
   // ────────────────────────────────────────────────────────────────────────────
   // Toolbar primitives
@@ -449,7 +505,7 @@
         disabled=${disabled}
         title=${title}
         aria-label=${title}
-        className=${`inline-flex items-center justify-center h-9 w-9 rounded-md transition-colors ${cls}`}
+        className=${`inline-flex items-center justify-center h-11 w-11 md:h-9 md:w-9 rounded-md transition-colors flex-shrink-0 ${cls}`}
       >
         ${icon}
       </button>
@@ -473,6 +529,7 @@
   const PLACEHOLDER = "Write here...";
 
   function Editor() {
+    const isMobile = useIsMobile();
     const [value, setValue] = useState("");
     const [emojiOpen, setEmojiOpen] = useState(false);
     const [symbolsOpen, setSymbolsOpen] = useState(false);
@@ -620,6 +677,9 @@
     const insertEmoji  = useCallback((emoji) => { insertChar(emoji); setEmojiOpen(false);   }, [insertChar]);
     const insertSymbol = useCallback((ch)    => { insertChar(ch);    setSymbolsOpen(false); }, [insertChar]);
 
+    const closeEmoji   = useCallback(() => setEmojiOpen(false),   []);
+    const closeSymbols = useCallback(() => setSymbolsOpen(false), []);
+
     const onCopy = async () => {
       try {
         await navigator.clipboard.writeText(value);
@@ -698,19 +758,124 @@
       ? "bg-emerald-50 border-emerald-200 text-emerald-700"
       : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700";
 
+    // Picker buttons defined once so refs are unambiguous; only one of the two
+    // toolbar branches below renders at a time, so each is mounted exactly once.
+    const emojiButton = html`
+      <div className="relative">
+        <${ToolButton}
+          ref=${emojiButtonRef}
+          onClick=${() => { setEmojiOpen((o) => !o); setSymbolsOpen(false); }}
+          title="Insert emoji"
+          icon=${html`<${Icon} name="smilePlus" />`}
+          active=${emojiOpen}
+        />
+        <${BottomSheet} ref=${emojiPopoverRef} open=${emojiOpen} onClose=${closeEmoji}>
+          <${EmojiPicker} onSelect=${insertEmoji} />
+        <//>
+      </div>
+    `;
+    const symbolsButton = html`
+      <div className="relative">
+        <${ToolButton}
+          ref=${symbolsButtonRef}
+          onClick=${() => { setSymbolsOpen((o) => !o); setEmojiOpen(false); }}
+          title="Insert symbol"
+          icon=${html`<span className="text-base leading-none">Ω</span>`}
+          active=${symbolsOpen}
+        />
+        <${BottomSheet} ref=${symbolsPopoverRef} open=${symbolsOpen} onClose=${closeSymbols}>
+          <${SymbolPicker} onSelect=${insertSymbol} />
+        <//>
+      </div>
+    `;
+
     return html`
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-visible">
-        <div className="border-b border-zinc-100">
-          <div className="flex items-center gap-1 px-3 pt-2 pb-1 flex-wrap">
-            <${ToolGroup}>
-              <${ToolButton} onClick=${onBold}       title="Bold (Ctrl+B)"   icon=${html`<${Icon} name="bold" />`} />
-              <${ToolButton} onClick=${onItalic}     title="Italic (Ctrl+I)" icon=${html`<${Icon} name="italic" />`} />
-              <${ToolButton} onClick=${onBoldItalic} title="Bold Italic"     icon=${html`<span className="font-semibold italic text-base leading-none">𝘽</span>`} />
-            <//>
+      <${React.Fragment}>
+        <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-visible flex-1 flex flex-col min-h-0">
+          ${!isMobile ? html`
+            <div className="border-b border-zinc-100">
+              <div className="flex items-center gap-1 px-3 pt-2 pb-1 flex-wrap">
+                <${ToolGroup}>
+                  <${ToolButton} onClick=${onBold}       title="Bold (Ctrl+B)"   icon=${html`<${Icon} name="bold" />`} />
+                  <${ToolButton} onClick=${onItalic}     title="Italic (Ctrl+I)" icon=${html`<${Icon} name="italic" />`} />
+                  <${ToolButton} onClick=${onBoldItalic} title="Bold Italic"     icon=${html`<span className="font-semibold italic text-base leading-none">𝘽</span>`} />
+                <//>
 
-            <${Divider} />
+                <${Divider} />
 
-            <${ToolGroup}>
+                <${ToolGroup}>
+                  <${ToolButton} onClick=${onScript}       title="Script"        icon=${html`<span className="text-base leading-none -mt-0.5">𝒮</span>`} />
+                  <${ToolButton} onClick=${onBoldScript}   title="Bold Script"   icon=${html`<span className="font-semibold text-base leading-none -mt-0.5">𝓢</span>`} />
+                  <${ToolButton} onClick=${onFraktur}      title="Fraktur"       icon=${html`<span className="text-base leading-none">𝔉</span>`} />
+                  <${ToolButton} onClick=${onDoubleStruck} title="Double-struck" icon=${html`<span className="text-base leading-none">𝔻</span>`} />
+                  <${ToolButton} onClick=${onFullwidth}    title="Fullwidth"     icon=${html`<span className="text-sm leading-none">Ａ</span>`} />
+                  <${ToolButton} onClick=${onCircled}      title="Circled"       icon=${html`<span className="text-base leading-none">Ⓒ</span>`} />
+                  <${ToolButton} onClick=${onMono}         title="Monospace"     icon=${html`<span className="font-mono text-base leading-none">𝙼</span>`} />
+                <//>
+
+                <${Divider} />
+
+                <${ToolGroup}>
+                  <${ToolButton} onClick=${onUnderline} title="Underline (Ctrl+U)" icon=${html`<${Icon} name="underline" />`} />
+                  <${ToolButton} onClick=${onStrike}    title="Strikethrough"      icon=${html`<${Icon} name="strikethrough" />`} />
+                <//>
+              </div>
+
+              <div className="flex items-center gap-1 px-3 pt-1 pb-2 flex-wrap">
+                <${ToolGroup}>
+                  ${emojiButton}
+                  ${symbolsButton}
+                <//>
+
+                <${Divider} />
+
+                <${ToolGroup}>
+                  <${ToolButton} onClick=${onUndo}  disabled=${!canUndo} title="Undo (Ctrl+Z)"        icon=${html`<${Icon} name="undo" />`} />
+                  <${ToolButton} onClick=${onRedo}  disabled=${!canRedo} title="Redo (Ctrl+Shift+Z)"  icon=${html`<${Icon} name="redo" />`} />
+                  <${ToolButton} onClick=${onErase}                     title="Erase formatting"     icon=${html`<${Icon} name="eraser" />`} />
+                <//>
+
+                <${Divider} />
+
+                <${ToolGroup}>
+                  <${ToolButton} onClick=${onBullet} title="Bullet list"   icon=${html`<${Icon} name="list" />`} />
+                  <${ToolButton} onClick=${onNumber} title="Numbered list" icon=${html`<${Icon} name="listOrdered" />`} />
+                <//>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-zinc-400 tabular-nums">${charCount.toLocaleString()} chars</span>
+                  <button
+                    type="button"
+                    onClick=${onCopy}
+                    className=${`inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md border transition-colors ${copyClass}`}
+                  >
+                    <${Icon} name=${copied ? "check" : "copy"} />
+                    ${copied ? "Copied!" : "Copy text"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ` : null}
+
+          <textarea
+            ref=${textareaRef}
+            value=${value}
+            onChange=${handleChange}
+            onKeyDown=${onKeyDown}
+            placeholder=${PLACEHOLDER}
+            spellCheck=${true}
+            className=${`block w-full flex-1 px-5 py-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none bg-transparent ${
+              isMobile ? "min-h-0" : "min-h-[400px] resize-y"
+            }`}
+          />
+        </div>
+
+        ${isMobile ? html`
+          <div className="fixed bottom-0 inset-x-0 z-30 h-14 bg-white border-t border-zinc-200 flex items-center px-1 gap-1">
+            <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto scrollbar-hide h-full px-1">
+              <${ToolButton} onClick=${onBold}         title="Bold"          icon=${html`<${Icon} name="bold" />`} />
+              <${ToolButton} onClick=${onItalic}       title="Italic"        icon=${html`<${Icon} name="italic" />`} />
+              <${ToolButton} onClick=${onBoldItalic}   title="Bold Italic"   icon=${html`<span className="font-semibold italic text-base leading-none">𝘽</span>`} />
               <${ToolButton} onClick=${onScript}       title="Script"        icon=${html`<span className="text-base leading-none -mt-0.5">𝒮</span>`} />
               <${ToolButton} onClick=${onBoldScript}   title="Bold Script"   icon=${html`<span className="font-semibold text-base leading-none -mt-0.5">𝓢</span>`} />
               <${ToolButton} onClick=${onFraktur}      title="Fraktur"       icon=${html`<span className="text-base leading-none">𝔉</span>`} />
@@ -718,87 +883,32 @@
               <${ToolButton} onClick=${onFullwidth}    title="Fullwidth"     icon=${html`<span className="text-sm leading-none">Ａ</span>`} />
               <${ToolButton} onClick=${onCircled}      title="Circled"       icon=${html`<span className="text-base leading-none">Ⓒ</span>`} />
               <${ToolButton} onClick=${onMono}         title="Monospace"     icon=${html`<span className="font-mono text-base leading-none">𝙼</span>`} />
-            <//>
-
-            <${Divider} />
-
-            <${ToolGroup}>
-              <${ToolButton} onClick=${onUnderline} title="Underline (Ctrl+U)" icon=${html`<${Icon} name="underline" />`} />
-              <${ToolButton} onClick=${onStrike}    title="Strikethrough"      icon=${html`<${Icon} name="strikethrough" />`} />
-            <//>
-          </div>
-
-          <div className="flex items-center gap-1 px-3 pt-1 pb-2 flex-wrap">
-            <${ToolGroup}>
-              <div className="relative">
-                <${ToolButton}
-                  ref=${emojiButtonRef}
-                  onClick=${() => { setEmojiOpen((o) => !o); setSymbolsOpen(false); }}
-                  title="Insert emoji"
-                  icon=${html`<${Icon} name="smilePlus" />`}
-                  active=${emojiOpen}
-                />
-                ${emojiOpen ? html`
-                  <div ref=${emojiPopoverRef} className="absolute z-50 left-0 mt-2">
-                    <${EmojiPicker} onSelect=${insertEmoji} />
-                  </div>
-                ` : null}
-              </div>
-              <div className="relative">
-                <${ToolButton}
-                  ref=${symbolsButtonRef}
-                  onClick=${() => { setSymbolsOpen((o) => !o); setEmojiOpen(false); }}
-                  title="Insert symbol"
-                  icon=${html`<span className="text-base leading-none">Ω</span>`}
-                  active=${symbolsOpen}
-                />
-                ${symbolsOpen ? html`
-                  <div ref=${symbolsPopoverRef} className="absolute z-50 left-0 mt-2">
-                    <${SymbolPicker} onSelect=${insertSymbol} />
-                  </div>
-                ` : null}
-              </div>
-            <//>
-
-            <${Divider} />
-
-            <${ToolGroup}>
-              <${ToolButton} onClick=${onUndo}  disabled=${!canUndo} title="Undo (Ctrl+Z)"        icon=${html`<${Icon} name="undo" />`} />
-              <${ToolButton} onClick=${onRedo}  disabled=${!canRedo} title="Redo (Ctrl+Shift+Z)"  icon=${html`<${Icon} name="redo" />`} />
-              <${ToolButton} onClick=${onErase}                     title="Erase formatting"     icon=${html`<${Icon} name="eraser" />`} />
-            <//>
-
-            <${Divider} />
-
-            <${ToolGroup}>
-              <${ToolButton} onClick=${onBullet} title="Bullet list"   icon=${html`<${Icon} name="list" />`} />
-              <${ToolButton} onClick=${onNumber} title="Numbered list" icon=${html`<${Icon} name="listOrdered" />`} />
-            <//>
-
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs text-zinc-400 tabular-nums">${charCount.toLocaleString()} chars</span>
-              <button
-                type="button"
-                onClick=${onCopy}
-                className=${`inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md border transition-colors ${copyClass}`}
-              >
-                <${Icon} name=${copied ? "check" : "copy"} />
-                ${copied ? "Copied!" : "Copy text"}
-              </button>
+              <${Divider} />
+              <${ToolButton} onClick=${onUnderline}    title="Underline"     icon=${html`<${Icon} name="underline" />`} />
+              <${ToolButton} onClick=${onStrike}       title="Strikethrough" icon=${html`<${Icon} name="strikethrough" />`} />
+              <${Divider} />
+              <${ToolButton} onClick=${onBullet}       title="Bullet list"   icon=${html`<${Icon} name="list" />`} />
+              <${ToolButton} onClick=${onNumber}       title="Numbered list" icon=${html`<${Icon} name="listOrdered" />`} />
+              <${Divider} />
+              ${emojiButton}
+              ${symbolsButton}
+              <${Divider} />
+              <${ToolButton} onClick=${onUndo}  disabled=${!canUndo} title="Undo"             icon=${html`<${Icon} name="undo" />`} />
+              <${ToolButton} onClick=${onRedo}  disabled=${!canRedo} title="Redo"             icon=${html`<${Icon} name="redo" />`} />
+              <${ToolButton} onClick=${onErase}                     title="Erase formatting" icon=${html`<${Icon} name="eraser" />`} />
             </div>
+            <button
+              type="button"
+              onClick=${onCopy}
+              aria-label=${copied ? "Copied" : "Copy text"}
+              title=${copied ? "Copied!" : "Copy text"}
+              className=${`flex-shrink-0 inline-flex items-center justify-center h-11 w-11 rounded-md border ${copyClass}`}
+            >
+              <${Icon} name=${copied ? "check" : "copy"} />
+            </button>
           </div>
-        </div>
-
-        <textarea
-          ref=${textareaRef}
-          value=${value}
-          onChange=${handleChange}
-          onKeyDown=${onKeyDown}
-          placeholder=${PLACEHOLDER}
-          spellCheck=${true}
-          className="block w-full min-h-[400px] resize-y px-5 py-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none bg-transparent"
-        />
-      </div>
+        ` : null}
+      <//>
     `;
   }
 
@@ -808,8 +918,8 @@
 
   function App() {
     return html`
-      <div className="min-h-screen">
-        <header className="max-w-3xl mx-auto px-4 pt-10 pb-6 sm:pt-14 sm:pb-8">
+      <div className="h-dvh md:h-auto md:min-h-screen flex flex-col pb-14 md:pb-0">
+        <header className="max-w-3xl mx-auto w-full px-4 pt-4 pb-3 md:pt-10 md:pb-6 lg:pt-14 lg:pb-8">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 to-sky-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">in</div>
             <div>
@@ -818,7 +928,7 @@
             </div>
           </div>
         </header>
-        <main className="max-w-3xl mx-auto px-4 pb-20">
+        <main className="flex-1 max-w-3xl mx-auto w-full px-4 pb-6 md:pb-20 flex flex-col min-h-0">
           <${Editor} />
           <footer className="mt-6 text-center text-xs text-slate-400 space-y-1">
             <p>Formatting uses Unicode math characters & combining marks — pastes directly into LinkedIn.</p>

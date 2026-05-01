@@ -81,11 +81,28 @@ Blank lines are preserved verbatim and (for numbered) don't increment the counte
 
 Uses the emoji-mart web component (`<em-emoji-picker>` custom element). The dataset is fetched lazily from `cdn.jsdelivr.net/npm/@emoji-mart/data` and cached in module-scope `emojiDataPromise`.
 
-The popover is positioned absolutely below the emoji button. Two outside-click handlers are wired:
-- emoji-mart's own `onClickOutside` callback.
-- A `mousedown` listener on `document` from the Editor.
+We deliberately do **not** pass emoji-mart's `onClickOutside` callback — its handler is registered on `document` and persists past `removeChild` on unmount, which fires `onClose` on the next click and prevents reopening. Outside-click is handled solely by the Editor's `mousedown` `useEffect` (which checks `popoverRef.current.contains(target)` — works whether the popover is anchored on desktop or portaled on mobile).
 
-Both close the popover; either is enough.
+## Symbol picker
+
+`SYMBOL_BLOCKS` is an array of `{ name, chars }` for 8 Unicode blocks (Icons/Dingbats, Arrows, Shapes, Currency, Misc Tech, Math, Math+, Misc Math A+B). `blockChars(start, end)` iterates the codepoint range and filters via `\p{Assigned}` — drops reserved/unassigned positions so the grid never shows tofu. `SymbolPicker` renders tabs across the top + a horizontally-bound, vertically-scrolling grid (12 cols desktop, 9 cols mobile). Tooltips show `U+xxxx` on each char button.
+
+## Responsive layout
+
+Split point: Tailwind `md` breakpoint (768px). `useIsMobile` (matchMedia hook) returns true below.
+
+**Desktop (≥ 768px):** two-row toolbar at the top of the editor card; popovers (Emoji, Symbols) render as absolutely-positioned anchored elements via `BottomSheet`'s desktop branch; char count visible; Copy is a labelled button ("Copy text").
+
+**Mobile (< 768px):** no toolbar in the card. A second toolbar is `position: fixed; bottom: 0` — single row, horizontal scroll (scrollbar hidden), with Copy as an icon-only button pinned to the right outside the scroll area. The page itself uses `h-dvh` (exact dynamic viewport height) with the App outer div padded `pb-14` to leave room for the sticky toolbar — so the layout fits exactly within the visible viewport with no scroll bar. Editor card grows via `flex-1` so the textarea fills space between header and footer. Touch targets 44×44 (`h-11 w-11`); on `md+` they revert to 36×36.
+
+**Bottom sheets (mobile only):** `BottomSheet` is a forwardRef component used uniformly by both pickers. On mobile it portals (`ReactDOM.createPortal`) a backdrop + slide-up sheet to `document.body`, sitting above the bottom toolbar (sheet `bottom: 56px` so toolbar stays visible). On desktop it renders the original anchored popover. The sheet's slide-up animation is a CSS keyframe in `index.html` (`@keyframes slide-up`).
+
+**emoji-mart in the sheet:** the picker is constructed with `dynamicWidth: true` so its `perLine` adapts to the sheet's width (otherwise it stays at the default ~360px regardless of how wide the container is). To make it fit *vertically* inside the sheet, three things are needed together (any one missing and the picker grows to its full content height of ~3800px):
+1. The `EmojiPicker`'s container div is `flex flex-col` on mobile.
+2. The `<em-emoji-picker>` element gets `flex: 1; min-height: 0; overflow: hidden` via the `@media (max-width: 767px)` block in `index.html` — `min-height: 0` is critical because emoji-mart sets an internal `min-height: 230px` that otherwise overrides `max-height: 100%`.
+3. On desktop the same container is `md:w-[360px] md:h-[360px]` so `dynamicWidth: true` has a defined size to compute against (without explicit dimensions, auto-width collapses).
+
+Outside-click closing works for both layouts via the same Editor `useEffect` (checks `popoverRef.current.contains(target)`). On mobile, taps on the backdrop are not contained in the sheet ref, so the same logic closes the popover (the backdrop also has its own `onMouseDown=onClose`, which is redundant but harmless — both call `setOpen(false)`).
 
 ## Working on this code
 
@@ -94,6 +111,17 @@ Both close the popover; either is enough.
 - **No JSX.** Use the htm template literal: ``html`<${Component} prop=${value}>...<//>``. Components mount with `<${Foo}>` and close with `<//>`. Attribute names follow React conventions (`className`, `onClick`, `strokeWidth` not `stroke-width`).
 - **Tailwind classes** are JIT-compiled by the Play CDN at runtime. Any standard Tailwind class works.
 - **Keep the IIFE.** The whole `app.js` is wrapped in `(function () { "use strict"; ... })()` to avoid leaking globals.
+
+## Debug data and scratch files
+
+Don't drop debug artifacts in the project root. Conventional locations:
+
+- **Playwright screenshots, snapshots, and console logs** — auto-saved under `.playwright-mcp/` (already gitignored). When taking screenshots via `mcp__playwright__browser_take_screenshot`, pass a relative `filename` like `repro-portrait.png`; Playwright places it under `.playwright-mcp/`. Don't pass an absolute path that would land it elsewhere.
+- **One-off scratch tests** (e.g. extracting `BASES` to verify formatting in node) — write to `/tmp/`, e.g. `/tmp/engine_test.mjs`. Don't commit.
+- **User-provided screenshots/files for review** (e.g. `/mnt/d/shot1.png`) — read directly from the path the user gave. No need to copy into the project.
+- **Persistent test fixtures** — would go under `tests/` if the project ever gets a real test suite. Currently it has none.
+
+If you find a one-off `.png`, `.log`, or scratch script in the project root after a debug session, move or delete it before committing.
 
 ## Manual testing
 
@@ -111,3 +139,8 @@ Useful sanity checks after touching the formatting engine:
 - Apply Erase formatting on a styled selection and verify it returns to plain ASCII (including spaces — no leftover EN QUAD).
 - Apply a list, then toggle the same list type — markers should be stripped.
 - Switch from Bullet to Numbered directly — should not leave residue.
+
+After touching responsive code, also verify:
+- Resize the browser across the 768px boundary and confirm the toolbar swaps location (top vs bottom) and the picker layouts swap (anchored vs sheet).
+- On mobile, tap Emoji/Symbol — sheet should slide up, sit above the bottom toolbar (toolbar stays visible), and dismiss via backdrop tap or Escape.
+- On mobile, the Copy button stays pinned to the right edge of the toolbar regardless of horizontal scroll.
