@@ -301,6 +301,9 @@
     listOrdered:   html`<line x1="10" x2="21" y1="6" y2="6" /><line x1="10" x2="21" y1="12" y2="12" /><line x1="10" x2="21" y1="18" y2="18" /><path d="M4 6h1v4" /><path d="M4 10h2" /><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />`,
     check:         html`<polyline points="20 6 9 17 4 12" />`,
     copy:          html`<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />`,
+    save:          html`<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" />`,
+    trash:         html`<path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />`,
+    bookmark:      html`<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />`,
   };
 
   function Icon({ name, className = "h-4 w-4" }) {
@@ -520,6 +523,130 @@
     return html`<div className="self-stretch w-px bg-zinc-200 mx-1" />`;
   }
 
+      // ────────────────────────────────────────────────────────────────────────────
+  // Drafts (localStorage)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const DRAFTS_KEY = "linkedin-formatter:drafts";
+  const DRAFT_PREVIEW_LIMIT = 100;
+
+  function loadDrafts() {
+    try {
+      const raw = localStorage.getItem(DRAFTS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((d) => d && typeof d.content === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function persistDrafts(drafts) {
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)); } catch {}
+  }
+
+  function draftPreview(content) {
+    const flat = content.replace(/\s+/g, " ").trim();
+    if (!flat) return "(empty)";
+    return flat.length > DRAFT_PREVIEW_LIMIT ? flat.slice(0, DRAFT_PREVIEW_LIMIT) + "…" : flat;
+  }
+
+  function formatRelativeTime(ts) {
+    const diff = Date.now() - ts;
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return "just now";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min} min${min === 1 ? "" : "s"} ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day} day${day === 1 ? "" : "s"} ago`;
+    return new Date(ts).toLocaleDateString();
+  }
+
+  function DraftsPanel({ currentValue, onRestore, onClose }) {
+    const [drafts, setDrafts] = useState(() => loadDrafts());
+    const canSave = currentValue.trim().length > 0;
+
+    const update = (next) => { setDrafts(next); persistDrafts(next); };
+
+    const saveCurrent = () => {
+      if (!canSave) return;
+      const draft = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        content: currentValue,
+        savedAt: Date.now(),
+      };
+      update([draft, ...drafts]);
+    };
+
+    const deleteOne = (id) => update(drafts.filter((d) => d.id !== id));
+
+    const deleteAll = () => {
+      if (drafts.length === 0) return;
+      const ok = window.confirm(`Delete all ${drafts.length} draft${drafts.length === 1 ? "" : "s"}?`);
+      if (!ok) return;
+      update([]);
+    };
+
+    const handleRestore = (draft) => {
+      onRestore(draft.content);
+      onClose();
+    };
+
+    return html`
+      <div className="bg-white flex flex-col overflow-hidden flex-1 w-full md:flex-initial md:w-[380px] md:h-[420px] md:rounded-lg md:shadow-xl md:border md:border-zinc-200">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 flex-shrink-0">
+          <h3 className="text-sm font-semibold text-zinc-800">Drafts</h3>
+          ${drafts.length > 0 ? html`
+            <button
+              type="button"
+              onClick=${deleteAll}
+              className="text-xs font-medium text-zinc-500 hover:text-red-600 transition-colors"
+            >Delete all</button>
+          ` : null}
+        </div>
+        <button
+          type="button"
+          onClick=${saveCurrent}
+          disabled=${!canSave}
+          className=${`flex items-center gap-2 px-3 py-2.5 border-b border-zinc-100 text-sm font-medium transition-colors flex-shrink-0 ${
+            canSave ? "text-blue-600 hover:bg-blue-50 active:bg-blue-100" : "text-zinc-300 cursor-not-allowed"
+          }`}
+        >
+          <${Icon} name="save" />
+          ${canSave ? "Save current as draft" : "Type something to save a draft"}
+        </button>
+        <div className="flex-1 overflow-y-auto">
+          ${drafts.length === 0 ? html`
+            <div className="text-sm text-zinc-400 px-3 py-8 text-center">No saved drafts yet</div>
+          ` : drafts.map((d) => html`
+            <div key=${d.id} className="group flex items-stretch border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50">
+              <button
+                type="button"
+                onClick=${() => handleRestore(d)}
+                title="Restore this draft"
+                className="flex-1 min-w-0 text-left px-3 py-2"
+              >
+                <div className="text-sm text-zinc-800 break-words line-clamp-2">${draftPreview(d.content)}</div>
+                <div className="text-[11px] text-zinc-400 mt-0.5">${formatRelativeTime(d.savedAt)}</div>
+              </button>
+              <button
+                type="button"
+                onClick=${() => deleteOne(d.id)}
+                title="Delete draft"
+                aria-label="Delete draft"
+                className="flex-shrink-0 inline-flex items-center justify-center w-10 text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <${Icon} name="trash" />
+              </button>
+            </div>
+          `)}
+        </div>
+      </div>
+    `;
+  }
+
   // ────────────────────────────────────────────────────────────────────────────
   // Editor
   // ────────────────────────────────────────────────────────────────────────────
@@ -533,12 +660,15 @@
     const [value, setValue] = useState("");
     const [emojiOpen, setEmojiOpen] = useState(false);
     const [symbolsOpen, setSymbolsOpen] = useState(false);
+    const [draftsOpen, setDraftsOpen] = useState(false);
     const [copied, setCopied] = useState(false);
     const textareaRef = useRef(null);
     const emojiButtonRef = useRef(null);
     const emojiPopoverRef = useRef(null);
     const symbolsButtonRef = useRef(null);
     const symbolsPopoverRef = useRef(null);
+    const draftsButtonRef = useRef(null);
+    const draftsPopoverRef = useRef(null);
 
     const [history, setHistory] = useState([{ value: "", selection: { start: 0, end: 0 } }]);
     const [historyIndex, setHistoryIndex] = useState(0);
@@ -679,6 +809,13 @@
 
     const closeEmoji   = useCallback(() => setEmojiOpen(false),   []);
     const closeSymbols = useCallback(() => setSymbolsOpen(false), []);
+    const closeDrafts  = useCallback(() => setDraftsOpen(false),  []);
+
+    const restoreDraft = (content) => {
+      flushPending();
+      const cursor = content.length;
+      commitChange(content, { start: cursor, end: cursor }, true);
+    };
 
     const onCopy = async () => {
       try {
@@ -727,17 +864,34 @@
       return () => document.removeEventListener("mousedown", handler);
     }, [symbolsOpen]);
 
+    // Close drafts popover on outside click
+    useEffect(() => {
+      if (!draftsOpen) return;
+      const handler = (e) => {
+        const target = e.target;
+        if (
+          draftsPopoverRef.current && !draftsPopoverRef.current.contains(target) &&
+          draftsButtonRef.current && !draftsButtonRef.current.contains(target)
+        ) {
+          setDraftsOpen(false);
+        }
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }, [draftsOpen]);
+
     // Escape to close any open popover
     useEffect(() => {
-      if (!emojiOpen && !symbolsOpen) return;
+      if (!emojiOpen && !symbolsOpen && !draftsOpen) return;
       const handler = (e) => {
         if (e.key !== "Escape") return;
         setEmojiOpen(false);
         setSymbolsOpen(false);
+        setDraftsOpen(false);
       };
       document.addEventListener("keydown", handler);
       return () => document.removeEventListener("keydown", handler);
-    }, [emojiOpen, symbolsOpen]);
+    }, [emojiOpen, symbolsOpen, draftsOpen]);
 
     const onKeyDown = (e) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -751,6 +905,14 @@
     };
 
     const charCount = useMemo(() => Array.from(value).length, [value]);
+    const wordCount = useMemo(() => {
+      // Drop list markers ("  • " / "  N. ") so they don't inflate the count,
+      // then keep only tokens that contain a letter or digit (skips lone bullets,
+      // dashes, etc.). \p{L} matches the styled Unicode math alphabetics too.
+      const cleaned = stripListMarkers(value);
+      if (!cleaned.trim()) return 0;
+      return cleaned.split(/\s+/).filter((t) => /[\p{L}\p{N}]/u.test(t)).length;
+    }, [value]);
     const canUndo = historyIndex > 0;
     const canRedo = historyIndex < history.length - 1;
 
@@ -778,13 +940,27 @@
       <div className="relative">
         <${ToolButton}
           ref=${symbolsButtonRef}
-          onClick=${() => { setSymbolsOpen((o) => !o); setEmojiOpen(false); }}
+          onClick=${() => { setSymbolsOpen((o) => !o); setEmojiOpen(false); setDraftsOpen(false); }}
           title="Insert symbol"
           icon=${html`<span className="text-base leading-none">Ω</span>`}
           active=${symbolsOpen}
         />
         <${BottomSheet} ref=${symbolsPopoverRef} open=${symbolsOpen} onClose=${closeSymbols}>
           <${SymbolPicker} onSelect=${insertSymbol} />
+        <//>
+      </div>
+    `;
+    const draftsButton = html`
+      <div className="relative">
+        <${ToolButton}
+          ref=${draftsButtonRef}
+          onClick=${() => { setDraftsOpen((o) => !o); setEmojiOpen(false); setSymbolsOpen(false); }}
+          title="Drafts"
+          icon=${html`<${Icon} name="bookmark" />`}
+          active=${draftsOpen}
+        />
+        <${BottomSheet} ref=${draftsPopoverRef} open=${draftsOpen} onClose=${closeDrafts}>
+          <${DraftsPanel} currentValue=${value} onRestore=${restoreDraft} onClose=${closeDrafts} />
         <//>
       </div>
     `;
@@ -819,6 +995,27 @@
                   <${ToolButton} onClick=${onUnderline} title="Underline (Ctrl+U)" icon=${html`<${Icon} name="underline" />`} />
                   <${ToolButton} onClick=${onStrike}    title="Strikethrough"      icon=${html`<${Icon} name="strikethrough" />`} />
                 <//>
+
+                <div className="ml-auto relative">
+                  <button
+                    ref=${draftsButtonRef}
+                    type="button"
+                    onClick=${() => { setDraftsOpen((o) => !o); setEmojiOpen(false); setSymbolsOpen(false); }}
+                    title="Drafts"
+                    aria-label="Drafts"
+                    className=${`inline-flex items-center justify-center gap-1.5 h-8 w-28 text-sm font-medium rounded-md border transition-colors ${
+                      draftsOpen
+                        ? "bg-zinc-100 border-zinc-300 text-zinc-900"
+                        : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <${Icon} name="bookmark" />
+                    Drafts
+                  </button>
+                  <${BottomSheet} ref=${draftsPopoverRef} open=${draftsOpen} onClose=${closeDrafts} className="right-0 left-auto">
+                    <${DraftsPanel} currentValue=${value} onRestore=${restoreDraft} onClose=${closeDrafts} />
+                  <//>
+                </div>
               </div>
 
               <div className="flex items-center gap-1 px-3 pt-1 pb-2 flex-wrap">
@@ -843,11 +1040,13 @@
                 <//>
 
                 <div className="ml-auto flex items-center gap-2">
-                  <span className="text-xs text-zinc-400 tabular-nums">${charCount.toLocaleString()} chars</span>
+                  <span className="text-xs text-zinc-400 tabular-nums">
+                    ${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"} · ${charCount.toLocaleString()} ${charCount === 1 ? "char" : "chars"}
+                  </span>
                   <button
                     type="button"
                     onClick=${onCopy}
-                    className=${`inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md border transition-colors ${copyClass}`}
+                    className=${`inline-flex items-center justify-center gap-1.5 h-8 w-28 text-sm font-medium rounded-md border transition-colors ${copyClass}`}
                   >
                     <${Icon} name=${copied ? "check" : "copy"} />
                     ${copied ? "Copied!" : "Copy text"}
@@ -868,6 +1067,11 @@
               isMobile ? "min-h-0" : "min-h-[400px] resize-y"
             }`}
           />
+          ${isMobile ? html`
+            <div className="px-3 py-1.5 text-[11px] text-zinc-400 text-right border-t border-zinc-100 tabular-nums flex-shrink-0">
+              ${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"} · ${charCount.toLocaleString()} ${charCount === 1 ? "char" : "chars"}
+            </div>
+          ` : null}
         </div>
 
         ${isMobile ? html`
@@ -892,6 +1096,7 @@
               <${Divider} />
               ${emojiButton}
               ${symbolsButton}
+              ${draftsButton}
               <${Divider} />
               <${ToolButton} onClick=${onUndo}  disabled=${!canUndo} title="Undo"             icon=${html`<${Icon} name="undo" />`} />
               <${ToolButton} onClick=${onRedo}  disabled=${!canRedo} title="Redo"             icon=${html`<${Icon} name="redo" />`} />

@@ -23,7 +23,8 @@ The IIFE is organized in numbered sections:
 4. **Emoji picker** — thin `EmojiPicker` wrapper around `EmojiMart.Picker` (custom element).
 5. **Toolbar primitives** — `ToolButton` (forwardRef), `ToolGroup`, `Divider`.
 6. **Editor** — main component. State: `value`, `emojiOpen`, `copied`, `history`, `historyIndex`. Selection-aware transforms via `transformSelection` and `transformLineRange`.
-7. **App shell** — header, mounts `Editor`, renders to `#root`.
+7. **Drafts (localStorage)** — `loadDrafts`, `persistDrafts`, `draftPreview`, `formatRelativeTime`, `DraftsPanel`. Drafts are stored under the key `linkedin-formatter:drafts` as a JSON array of `{ id, content, savedAt }`. The panel is reachable from the toolbar (bookmark icon) and renders inside the same `BottomSheet` used by the emoji/symbol pickers.
+8. **App shell** — header, mounts `Editor`, renders to `#root`.
 
 ## Formatting model
 
